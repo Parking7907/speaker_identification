@@ -9,7 +9,7 @@ from collections import Counter
 import copy
 import csv
 
-f = open("short_all.txt", 'r', encoding='UTF-8')
+f = open("voxceleb_all.txt", 'r', encoding='UTF-8')
 lines = f.readlines()
 #lines
 lines_list = [0 for i in range(len(lines))]
@@ -32,4 +32,4 @@ for lines in lines_list:
     if lines:
         wav_dict[lines] = speaker_dict[lines.split('/')[1]]
 print(wav_dict)
-np.save("short.npy", wav_dict)
+np.save("voxceleb.npy", wav_dict)
