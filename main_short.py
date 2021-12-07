@@ -35,7 +35,7 @@ def create_batches_rnd(batch_size,data_folder,wav_lst,N_snt,wlen,lab_dict,fact_a
     for i in range(batch_size):
         #pdb.set_trace()
         pase_data = np.load(data_folder+wav_lst[snt_id_arr[i]])
-        pase_data = pase_data[:224, :] / normalize_size
+        pase_data = pase_data[:224, :] / np.max(pase_data)
 
         # accesing to a random chunk
         snt_len=pase_data.shape[1]
@@ -63,7 +63,6 @@ def create_batches_rnd(batch_size,data_folder,wav_lst,N_snt,wlen,lab_dict,fact_a
 
 
 if __name__ == '__main__':
-    
     #####################################################################Setup#######################################################################
     options=read_conf()
     tr_lst=options.tr_lst
@@ -98,7 +97,7 @@ if __name__ == '__main__':
     snt_te=len(wav_lst_te)
 
 
-    # Folder creation
+    # Folder creationt
     try:
         os.stat(output_folder)
     except:
@@ -133,7 +132,8 @@ if __name__ == '__main__':
 
 
     ##################################################TRAIN###################################
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    pdb.set_trace()
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     cost = cost.to(device)
     model = MyNet(out_features).to(device)
     best_error = 1

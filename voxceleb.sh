@@ -3,5 +3,5 @@
 #python voxceleb_VAD_preparation.py /home/data/jinyoung/grandchallenge/ /home/data/jinyoung/output_grandchallenge /home/jinyoung/grand_challenge_2021/data_lists/grandchallenge_all.scp
 #python speaker_id.py --cfg=cfg/Seoulmal.cfg
 
-python main.py --cfg=cfg/Voxceleb.cfg
+CUDA_VISIBLE_DEVICES=0 python main.py --cfg=cfg/Voxceleb.cfg
 

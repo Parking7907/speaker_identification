@@ -18,9 +18,7 @@ class MyNet(nn.Module):
         #self.FC1 = nn.Linear(512,out_features)
     def forward(self, rgb):
         B = rgb.shape[0]
-        
-        rgb = rgb.transpose(0, 1)
-        
+        rgb = torch.unsqueeze(rgb, 1)
         #pdb.set_trace()
         out = self.backbone(rgb)
 

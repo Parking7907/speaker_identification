@@ -19,11 +19,14 @@ from data_io import ReadList,read_conf,str_to_bool
 from loss_functions import AngularPenaltySMLoss
 import pdb
 import logging
+from dataset import Voxceleb
+import time
 #from trainer import ModelTrainer
 #from tester import ModelTester
 #from dataset import seoulmal
 
 #create_batches_rnd(batch_size,data_folder,wav_lst_tr,snt_tr,wlen,lab_dict,0.2)
+'''
 def create_batches_rnd(batch_size,data_folder,wav_lst,N_snt,wlen,lab_dict,fact_amp, normalize_size):
  # Initialization of the minibatch (batch_size,[0=>x_t,1=>x_t+N,1=>random_samp])
     sig_batch=np.zeros([batch_size,wlen, wlen])
@@ -35,7 +38,7 @@ def create_batches_rnd(batch_size,data_folder,wav_lst,N_snt,wlen,lab_dict,fact_a
     for i in range(batch_size):
         #pdb.set_trace()
         pase_data = np.load(data_folder+wav_lst[snt_id_arr[i]])
-        pase_data = pase_data[:224, :] / normalize_size
+        pase_data = pase_data[:224, :] / np.max(pase_data)
 
         # accesing to a random chunk
         snt_len=pase_data.shape[1]
@@ -59,7 +62,7 @@ def create_batches_rnd(batch_size,data_folder,wav_lst,N_snt,wlen,lab_dict,fact_a
     label=Variable(torch.from_numpy(lab_batch).float().cuda().contiguous())
     #pdb.set_trace()
     return batch,label
-    
+'''
 
 
 if __name__ == '__main__':
@@ -96,7 +99,18 @@ if __name__ == '__main__':
     # test list
     wav_lst_te=ReadList(te_lst)
     snt_te=len(wav_lst_te)
-
+    spk_lst = []
+    for i in wav_lst_te:
+        n = i.split('/')[1]
+        if n not in spk_lst:
+            spk_lst.append(n)
+    spk_lst.sort()
+    spk_lst_dict ={}
+    for i, spk in enumerate(spk_lst):
+        spk_lst_dict[spk] = i
+    
+    
+    #pdb.set_trace()
 
     # Folder creation
     try:
@@ -138,21 +152,47 @@ if __name__ == '__main__':
     model = MyNet(out_features).to(device)
     best_error = 1
     wav_lst_te.sort()
+    train_dataset = Voxceleb(data_folder,wav_lst_tr,spk_lst,spk_lst_dict,'Train', batch_size, wlen)
+    test_dataset = Voxceleb(data_folder,wav_lst_te,spk_lst,spk_lst_dict,'Test', batch_size, wlen)
+    train_loader = DataLoader(train_dataset, batch_size = 1, shuffle = True, num_workers = 24)
+    test_loader = DataLoader(test_dataset, batch_size = 1, shuffle = False, num_workers = 24)
+    
+    #pdb.set_trace()
     for epoch in range(N_epochs):
         test_flag=0
         model.train()
         loss_sum=0
         err_sum=0
         #MyNet_net = MLP(MyNet_net)
-        optimizer_MyNet = optim.RMSprop(model.parameters(), lr=lr,alpha=0.95, eps=1e-8) 
+        optimizer_MyNet = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-6,eps=1e-8)
+        #optimizer_MyNet = optim.RMSprop(model.parameters(), lr=lr,alpha=0.95, eps=1e-8)
+        scheduler = optim.lr_scheduler.OneCycleLR(
+            optimizer_MyNet,
+            max_lr=lr, 
+            total_steps=10000,
+            pct_start=0.3,
+            base_momentum=0.9*0.95,
+            max_momentum=0.95,
+            final_div_factor=1/0.0001,
+        )
+
         # Batch_dev
         Batch_dev=128
         normalize_size = 12.5
-        for i in range(N_batches):
-            [inp,lab]=create_batches_rnd(batch_size,data_folder,wav_lst_tr,snt_tr,wlen,lab_dict,0.2,normalize_size)
+        #pdb.set_trace()
+        st_1 = time.time()
+        N_batches = len(train_loader)
+        for i, batch in enumerate(train_loader):
+            
+            [sig_batch,lab_batch]=batch
+            
+            inp =Variable(sig_batch.float().cuda().contiguous())
+            lab =Variable(lab_batch.float().cuda().contiguous())
             #inp = inp.to(device=cuda)
+            #pdb.set_trace()
             pout=model(inp)
             pout = pout.to(device)
+            lab = lab.squeeze(0)
             lab = lab.long().to(device)
             wf, loss = cost(pout, lab)
             pred=torch.max(wf,dim=1)[1]
@@ -163,15 +203,18 @@ if __name__ == '__main__':
         
             loss.backward()
             optimizer_MyNet.step()
+            scheduler.step()
             
             loss_sum=loss_sum+loss.detach()
             err_sum=err_sum+err.detach()
-            if i % 400 ==0:
-                logger.info("epoch: {}, batch {} / {} --- t_loss : {:0.3f}".format(epoch, i, N_batches, loss))
+            if i % 100 ==0:
+                en_1 = time.time()
+                logger.info("epoch: {}, batch {} / {}, time : {}, --- t_loss : {:0.3f}".format(epoch, i, N_batches, en_1-st_1, loss))
 
         loss_tot=loss_sum/N_batches
         err_tot=err_sum/N_batches
         if epoch % N_eval_epoch==0:
+            st_2 = time.time()
             model.eval()
             cost.eval()
             test_flag=1 
@@ -179,6 +222,7 @@ if __name__ == '__main__':
             err_sum=0
             err_sum_snt=0
             with torch.no_grad():
+                
                 for i in range(snt_te):
                     pase_data = np.load(data_folder+wav_lst_te[i]) # 256 X length
                     #print(wav_lst_te[i])
@@ -244,7 +288,8 @@ if __name__ == '__main__':
                 err_tot_dev_snt=err_sum_snt/snt_te
                 loss_tot_dev=loss_sum/snt_te
                 err_tot_dev=err_sum/snt_te
-            print("epoch %i, loss_tr=%f err_tr=%f loss_te=%f err_te=%f err_te_snt=%f" % (epoch, loss_tot,err_tot,loss_tot_dev,err_tot_dev,err_tot_dev_snt))
+            en_2 = time.time(0)
+            print("epoch %i, loss_tr=%f err_tr=%f loss_te=%f err_te=%f err_te_snt=%f, time = %f" % (epoch, loss_tot,err_tot,loss_tot_dev,err_tot_dev,err_tot_dev_snt, en_2-st_2))
 
             with open(output_folder+"/res.res", "a") as res_file:
                 res_file.write("epoch %i, loss_tr=%f err_tr=%f loss_te=%f err_te=%f err_te_snt=%f\n" % (epoch, loss_tot,err_tot,loss_tot_dev,err_tot_dev,err_tot_dev_snt))   
